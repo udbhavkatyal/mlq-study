@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MLQ Study</title>
+<meta name="theme-color" content="#fbf8f4">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Study">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+  html,body{margin:0;height:100%;background:#fbf8f4;color:#1f1a2e;font:15px/1.4 -apple-system,system-ui,sans-serif}
+  #boot{position:fixed;inset:0;display:grid;place-items:center;text-align:center;padding:24px}
+  #boot img{width:84px;height:84px;border-radius:22px;animation:b 1.6s ease-in-out infinite;box-shadow:0 10px 30px rgba(244,114,182,.3)}
+  #boot p{margin:18px 0 0;color:#8a8398;font-size:14px}
+  #boot button{margin-top:16px;border:0;border-radius:14px;padding:12px 22px;background:linear-gradient(135deg,#ff8a65,#f472b6 52%,#8b5cf6);color:#fff;font:inherit;font-weight:600}
+  @keyframes b{0%,100%{transform:scale(1)}50%{transform:scale(.94)}}
+</style>
+<script>
+// MLQ Study (Jyoti's study timer). This page never changes: it opens the newest MLQ Study screens, which MLQ Solo puts in
+// the cloud after every update (Supabase Storage: web/latest.json → web/v<version>/). The last version stays cached.
+(function () {
+  var S = "https://fxqtrzzlplnkoxcpanqc.supabase.co/storage/v1/object/public/web/";
+  var KEY = "study.webver";
+  function show(msg, retry) { document.getElementById("msg").textContent = msg; document.getElementById("retry").style.display = retry ? "inline-block" : "none"; }
+  function timeout(p, ms) { return Promise.race([p, new Promise(function (_, no) { setTimeout(function () { no(new Error("timeout")); }, ms); })]); }
+  async function start() {
+    show("Opening…", false);
+    var ver = null, last = null;
+    try { last = localStorage.getItem(KEY); } catch (e) {}
+    var newest = timeout(fetch(S + "latest.json?t=" + Date.now(), { cache: "no-store" }), 7000)
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { if (j && j.version) { try { localStorage.setItem(KEY, String(j.version)); } catch (e) {} return String(j.version); } return null; })
+      .catch(function () { return null; });
+    ver = last ? await Promise.race([newest, new Promise(function (r) { setTimeout(function () { r(null); }, 600); })]) : await newest;
+    if (!ver && last) ver = last;
+    if (!ver) { show("MLQ Study needs the internet the first time it opens.", true); return; }
+    var base = S + "v" + ver + "/", html;
+    try {
+      var p = await timeout(fetch(base + "index.html", { cache: "force-cache" }), 15000);
+      if (!p.ok) throw new Error("HTTP " + p.status);
+      html = await p.text();
+    } catch (e) { show("Couldn't open MLQ Study. Check your internet and try again.", true); return; }
+    // Jyoti's screens: the study app and its light stylesheet, not MLQ Solo's
+    html = html.replace("css/app.css", "css/study.css").replace("js/app.js", "js/study.js").replace(/<meta name="theme-color"[^>]*>/, '<meta name="theme-color" content="#fbf8f4">');
+    // the Home Screen name and icon are this page's, not MLQ Solo's
+    var here = location.origin + location.pathname.replace(/[^/]*$/, "");
+    html = html.replace(/<link rel="manifest"[^>]*>/, '<link rel="manifest" href="' + here + 'manifest.webmanifest">')
+      .replace(/<link rel="apple-touch-icon"[^>]*>/, '<link rel="apple-touch-icon" href="' + here + 'apple-touch-icon.png"><meta name="apple-mobile-web-app-title" content="Study"><meta name="apple-mobile-web-app-status-bar-style" content="default">')
+      .replace(/<link rel="icon"[^>]*>/, '<link rel="icon" href="' + here + 'icon-192.png">')
+      .replace(/<title>[^<]*<\/title>/, "<title>MLQ Study</title>");
+    html = html.replace("<head>", "<head><base href=\"" + base + "\"><script>window.SOLO_BASE=" + JSON.stringify(base) + ";window.SOLO_STUDY=true;<" + "/script>");
+    document.open(); document.write(html); document.close();
+  }
+  window.soloStart = start;
+  document.addEventListener("DOMContentLoaded", start);
+})();
+</script></head>
+<body><div id="boot"><div><img src="icon-192.png" alt=""><p id="msg">Opening…</p><button id="retry" style="display:none" onclick="soloStart()">Try Again</button></div></div></body></html>
